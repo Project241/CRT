@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import AppShell from "../components/AppShell.jsx";
+import Pagination from "../components/Pagination.jsx";
 import { api } from "../lib/api.js";
 import { useToast } from "../components/Toast.jsx";
+
+const GROUPS_PER_PAGE = 12;
 
 export default function PracticeStart() {
   const [, navigate] = useLocation();
@@ -170,16 +173,12 @@ function GroupsPanel({ loading, data, specialty, level, totalAttempted, onOpen }
 
       <div className="spacer-7" />
 
-      <div className="group-grid">
-        {data.groups.map((g) => (
-          <GroupCard
-            key={g.index}
-            group={g}
-            isSuggested={g.index === data.suggestedGroup}
-            onOpen={() => onOpen(g)}
-          />
-        ))}
-      </div>
+      <PaginatedGroups
+        groups={data.groups}
+        suggestedGroup={data.suggestedGroup}
+        onOpen={onOpen}
+      />
+
 
       <style>{`
         .group-grid {
@@ -278,6 +277,45 @@ function GroupsPanel({ loading, data, specialty, level, totalAttempted, onOpen }
         }
       `}</style>
     </motion.div>
+  );
+}
+
+function PaginatedGroups({ groups, suggestedGroup, onOpen }) {
+  // Default to the page that contains the suggested group so users land
+  // exactly where they should continue practicing without needing to click Next.
+  const totalPages = Math.max(1, Math.ceil(groups.length / GROUPS_PER_PAGE));
+  const suggestedPage = suggestedGroup
+    ? Math.max(1, Math.ceil(suggestedGroup / GROUPS_PER_PAGE))
+    : 1;
+  const [page, setPage] = useState(suggestedPage);
+
+  // Re-sync the active page if the underlying group list shrinks below it.
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const start = (page - 1) * GROUPS_PER_PAGE;
+  const slice = groups.slice(start, start + GROUPS_PER_PAGE);
+
+  return (
+    <>
+      <div className="group-grid">
+        {slice.map((g) => (
+          <GroupCard
+            key={g.index}
+            group={g}
+            isSuggested={g.index === suggestedGroup}
+            onOpen={() => onOpen(g)}
+          />
+        ))}
+      </div>
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={groups.length}
+        onChange={setPage}
+      />
+    </>
   );
 }
 

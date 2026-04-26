@@ -2,9 +2,12 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import AppShell from "../components/AppShell.jsx";
 import Avatar from "../components/Avatar.jsx";
+import Pagination from "../components/Pagination.jsx";
 import { api } from "../lib/api.js";
 import { useToast } from "../components/Toast.jsx";
 import { useAuth } from "../lib/auth.jsx";
+
+const PAGE_SIZE = 20;
 
 function fmtTime(iso) {
   if (!iso) return "";
@@ -23,6 +26,9 @@ export default function DeleteRequests() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const [items, setItems] = useState([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [activeId, setActiveId] = useState(null);
   const [data, setData] = useState({});
   const [text, setText] = useState("");
@@ -32,13 +38,21 @@ export default function DeleteRequests() {
 
   const active = items.find((d) => d.case_id === activeId) || null;
 
-  async function loadList() {
+  const loadList = useCallback(async () => {
     try {
-      const r = await api.get("/api/discussions/delete-requests");
-      setItems(r.requests || []);
-      if (!activeId && r.requests?.[0]) setActiveId(r.requests[0].case_id);
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(PAGE_SIZE),
+        status: "pending",
+      });
+      const r = await api.get(`/api/discussions/delete-requests?${params}`);
+      const list = r.items || r.requests || [];
+      setItems(list);
+      setTotalPages(r.totalPages || 1);
+      setTotal(r.total || list.length);
+      if (!activeId && list[0]) setActiveId(list[0].case_id);
     } catch (e) { toast.error(e.message); }
-  }
+  }, [page, activeId, toast]);
 
   const loadThread = useCallback(async () => {
     if (!activeId) return;
@@ -57,8 +71,7 @@ export default function DeleteRequests() {
     loadList();
     const iv = setInterval(loadList, 15000);
     return () => clearInterval(iv);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadList]);
 
   useEffect(() => {
     loadThread();
@@ -100,7 +113,7 @@ export default function DeleteRequests() {
 
         <div className="dm-shell">
           <aside className={`dm-sidebar ${activeId ? "has-active" : ""}`}>
-            <div className="dm-sidebar-head">Open requests ({items.length})</div>
+            <div className="dm-sidebar-head">Open requests ({total})</div>
             {items.length === 0 && <div className="empty" style={{ padding: 16 }}>No delete requests.</div>}
             <ul className="dm-thread-list">
               {items.map((d) => {
@@ -128,6 +141,7 @@ export default function DeleteRequests() {
                 );
               })}
             </ul>
+            <Pagination page={page} totalPages={totalPages} total={total} onChange={setPage} />
           </aside>
 
           <section className={`dm-main ${activeId ? "has-active" : ""}`}>
