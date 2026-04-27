@@ -3,7 +3,12 @@ import { Link } from "wouter";
 import AppShell from "../components/AppShell.jsx";
 import Modal from "../components/Modal.jsx";
 import Pagination from "../components/Pagination.jsx";
-import Skeleton from "../components/Skeleton.jsx";
+import Skeleton, { SkeletonRows } from "../components/Skeleton.jsx";
+import EmptyState from "../components/EmptyState.jsx";
+import ErrorState from "../components/ErrorState.jsx";
+import { useConfirm } from "../components/ConfirmDialog.jsx";
+import useUrlPaging from "../lib/usePaging.js";
+import { dateTime, relativeTime } from "../lib/date.js";
 import { api } from "../lib/api.js";
 import { useToast } from "../components/Toast.jsx";
 
@@ -43,7 +48,9 @@ function StatValue({ value }) {
 
 export default function AdminDashboard() {
   const toast = useToast();
+  const [confirmEl, askConfirm] = useConfirm();
   const [stats, setStats] = useState(null);
+  const [statsError, setStatsError] = useState(null);
 
   // Pending doctors
   const [pending, setPending] = useState({ items: [], total: 0, totalPages: 1, loading: true });
@@ -66,6 +73,10 @@ export default function AdminDashboard() {
   const [caseAttempts, setCaseAttempts] = useState([]);
   const [studentAttempts, setStudentAttempts] = useState([]);
   const [attemptsSort, setAttemptsSort] = useState("most");
+  const [activityLoading, setActivityLoading] = useState(true);
+  const [activityError, setActivityError] = useState(null);
+  const caseAttemptsPg = useUrlPaging({ initialPage: 1, initialPageSize: 25, prefix: "ca", enabled: false });
+  const studentAttemptsPg = useUrlPaging({ initialPage: 1, initialPageSize: 25, prefix: "ua", enabled: false });
 
   // AI generate
   const [genCount, setGenCount] = useState(5);
@@ -84,7 +95,8 @@ export default function AdminDashboard() {
 
   function loadStats() {
     setStats(null);
-    api.get("/api/admin/stats").then(setStats).catch(() => setStats({}));
+    setStatsError(null);
+    api.get("/api/admin/stats").then(setStats).catch((e) => { setStats({}); setStatsError(e?.message || "Could not load stats"); });
   }
 
   function loadPending(page = pendingPage, q = pendingQ) {
@@ -130,12 +142,18 @@ export default function AdminDashboard() {
   }
 
   function loadActivity() {
+    setActivityLoading(true);
+    setActivityError(null);
     Promise.all([
-      api.get(`/api/admin/case-attempts?limit=200&sort=${attemptsSort === "least" ? "least" : "most"}`).catch(() => ({ cases: [] })),
-      api.get("/api/admin/student-attempts?limit=200").catch(() => ({ users: [] })),
+      api.get(`/api/admin/case-attempts?limit=200&sort=${attemptsSort === "least" ? "least" : "most"}`),
+      api.get("/api/admin/student-attempts?limit=200"),
     ]).then(([ca, sa]) => {
       setCaseAttempts(ca.cases || []);
       setStudentAttempts(sa.users || []);
+      setActivityLoading(false);
+    }).catch((e) => {
+      setActivityError(e?.message || "Could not load practice activity");
+      setActivityLoading(false);
     });
   }
 
@@ -217,9 +235,13 @@ export default function AdminDashboard() {
 
   // ----- Delete request decisions -----
   async function deleteRequestApprove(request) {
-    const ok = window.confirm(
-      `Delete the case "${request.case_title}" permanently?\n\nThis will hide it from learners. The requester will be notified.`
-    );
+    const ok = await askConfirm({
+      title: "Delete this case?",
+      body: <>This permanently hides <strong>"{request.case_title}"</strong> from learners. The requester will be notified.</>,
+      confirmLabel: "Delete case",
+      cancelLabel: "Keep case",
+      tone: "danger",
+    });
     if (!ok) return;
     try {
       await api.patch(`/api/admin/delete-requests/${request.id}`, { decision: "approved" });
@@ -228,7 +250,13 @@ export default function AdminDashboard() {
     } catch (e) { toast.error(e.message); }
   }
   async function deleteRequestReject(request) {
-    const ok = window.confirm(`Reject the delete request for "${request.case_title}"?`);
+    const ok = await askConfirm({
+      title: "Reject delete request?",
+      body: <>Keep <strong>"{request.case_title}"</strong> in the library. The requester will be notified.</>,
+      confirmLabel: "Reject request",
+      cancelLabel: "Cancel",
+      tone: "primary",
+    });
     if (!ok) return;
     try {
       await api.patch(`/api/admin/delete-requests/${request.id}`, { decision: "rejected" });
@@ -353,9 +381,13 @@ export default function AdminDashboard() {
           </div>
           <div className="spacer-7" />
           {pending.loading && pending.items.length === 0 ? (
-            <Skeleton height={120} />
+            <SkeletonRows n={4} avatar={false} />
           ) : pending.items.length === 0 ? (
-            <div className="empty">{pendingQ ? "No applications match your search." : "No pending doctor applications."}</div>
+            <EmptyState
+              icon="🩺"
+              title={pendingQ ? "No matches" : "Inbox zero"}
+              body={pendingQ ? "No applications match your search." : "No pending doctor applications. You're all caught up."}
+            />
           ) : (
             <>
               <div style={{ overflowX: "auto" }}>
@@ -364,15 +396,19 @@ export default function AdminDashboard() {
                   <tbody>
                     {pending.items.map((d) => (
                       <tr key={d.id}>
-                        <td><strong>{d.full_name}</strong><div className="muted small">@{d.username} · {d.email}</div></td>
+                        <td>
+                          <Link href={`/u/${d.username}`}><strong>{d.full_name}</strong></Link>
+                          <div className="muted small">@{d.username} · {d.email}</div>
+                        </td>
                         <td>{d.specialty}<div className="muted small">{d.years_exp || 0}y</div></td>
                         <td>{d.license_number}</td>
                         <td>{d.hospital || "—"}</td>
                         <td className="muted small" style={{ maxWidth: 280 }}>{d.proof_text || "—"}</td>
                         <td>
-                          <div className="row">
+                          <div className="row row-actions">
                             <button className="btn btn-primary btn-sm" onClick={() => openDoctorModal(d, "approve")}>Approve</button>
                             <button className="btn btn-danger btn-sm" onClick={() => openDoctorModal(d, "reject")}>Reject</button>
+                            <Link href={`/messages/u/${d.username}`} className="btn btn-ghost btn-sm" title="Send a message">DM</Link>
                           </div>
                         </td>
                       </tr>
@@ -414,9 +450,13 @@ export default function AdminDashboard() {
           </div>
           <div className="spacer-7" />
           {drs.loading && drs.items.length === 0 ? (
-            <Skeleton height={120} />
+            <SkeletonRows n={4} avatar={false} />
           ) : drs.items.length === 0 ? (
-            <div className="empty">{drQ ? "No requests match your search." : `No ${drStatus === "all" ? "" : drStatus + " "}delete requests.`}</div>
+            <EmptyState
+              icon="🗂"
+              title={drQ ? "No matches" : "Nothing to review"}
+              body={drQ ? "No requests match your search." : `No ${drStatus === "all" ? "" : drStatus + " "}delete requests.`}
+            />
           ) : (
             <>
               <div style={{ overflowX: "auto" }}>
@@ -432,7 +472,7 @@ export default function AdminDashboard() {
                         <td><span className="muted small">{d.status}</span></td>
                         <td>
                           {d.status === "pending" ? (
-                            <div className="row">
+                            <div className="row row-actions">
                               <button className="btn btn-danger btn-sm" onClick={() => deleteRequestApprove(d)}>Delete</button>
                               <button className="btn btn-secondary btn-sm" onClick={() => openEditInstead(d)}>Edit instead</button>
                               <button className="btn btn-ghost btn-sm" onClick={() => deleteRequestReject(d)}>Reject</button>
@@ -479,9 +519,13 @@ export default function AdminDashboard() {
           </div>
           <div className="spacer-7" />
           {reports.loading && reports.items.length === 0 ? (
-            <Skeleton height={120} />
+            <SkeletonRows n={4} avatar={false} />
           ) : reports.items.length === 0 ? (
-            <div className="empty">{repQ ? "No reports match your search." : `No ${repStatus === "all" ? "" : repStatus + " "}reports.`}</div>
+            <EmptyState
+              icon="📭"
+              title={repQ ? "No matches" : "No reports to review"}
+              body={repQ ? "No reports match your search." : `No ${repStatus === "all" ? "" : repStatus + " "}reports right now.`}
+            />
           ) : (
             <>
               <div style={{ overflowX: "auto" }}>
@@ -491,13 +535,13 @@ export default function AdminDashboard() {
                     {reports.items.map((r) => (
                       <tr key={r.id}>
                         <td><Link href={`/case/${r.case_id}`}><strong>{r.title}</strong></Link></td>
-                        <td>@{r.username}</td>
+                        <td><Link href={`/u/${r.username}`}>@{r.username}</Link></td>
                         <td className="muted small" style={{ maxWidth: 320 }}>{r.reason}</td>
                         <td><span className="muted small">{r.status || "open"}</span></td>
-                        <td className="muted small">{new Date(r.created_at).toLocaleDateString()}</td>
+                        <td className="muted small" title={r.created_at ? new Date(r.created_at).toLocaleString() : ""}>{relativeTime(r.created_at)}</td>
                         <td>
                           {(r.status || "open") === "open" ? (
-                            <div className="row">
+                            <div className="row row-actions">
                               <button className="btn btn-primary btn-sm" onClick={() => openReportAction(r, "actioned")}>Mark actioned</button>
                               <button className="btn btn-ghost btn-sm" onClick={() => openReportAction(r, "dismissed")}>Dismiss</button>
                             </div>
@@ -529,39 +573,65 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div className="spacer-7" />
-          {caseAttempts.length === 0 ? (
-            <p className="muted small">No attempts yet.</p>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table className="table" style={{ width: "100%", fontSize: 13 }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: "left" }}>Case</th>
-                    <th style={{ textAlign: "left" }}>Specialty</th>
-                    <th style={{ textAlign: "center" }}>Lvl</th>
-                    <th style={{ textAlign: "right" }}>Attempts</th>
-                    <th style={{ textAlign: "right" }}>Unique learners</th>
-                    <th style={{ textAlign: "left" }}>Last attempt</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {caseAttempts.slice(0, 50).map((c) => (
-                    <tr key={c.id}>
-                      <td><Link href={`/case/${c.id}`}>{c.title || `Case #${c.id}`}</Link></td>
-                      <td>{c.specialty || "—"}</td>
-                      <td style={{ textAlign: "center" }}>{c.level ?? "—"}</td>
-                      <td style={{ textAlign: "right", fontWeight: 700 }}>{c.attempts}</td>
-                      <td style={{ textAlign: "right" }}>{c.unique_students}</td>
-                      <td style={{ color: "var(--muted, #888)" }}>{c.last_attempt ? new Date(c.last_attempt).toLocaleString() : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {caseAttempts.length > 50 && (
-                <p className="muted small" style={{ marginTop: 8 }}>Showing top 50 of {caseAttempts.length}.</p>
-              )}
-            </div>
-          )}
+          {activityLoading ? (
+            <SkeletonRows n={6} avatar={false} />
+          ) : activityError ? (
+            <ErrorState body={activityError} onRetry={loadActivity} />
+          ) : caseAttempts.length === 0 ? (
+            <EmptyState icon="📊" title="No attempts yet" body="Once learners start practicing, you'll see usage here." />
+          ) : (() => {
+            const total = caseAttempts.length;
+            const pageSize = caseAttemptsPg.pageSize;
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+            const page = Math.min(caseAttemptsPg.page, totalPages);
+            const start = (page - 1) * pageSize;
+            const slice = caseAttempts.slice(start, start + pageSize);
+            return (
+              <>
+                <div style={{ overflowX: "auto" }}>
+                  <table className="table" style={{ width: "100%", fontSize: 13 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: "left" }}>Case</th>
+                        <th style={{ textAlign: "left" }}>Specialty</th>
+                        <th style={{ textAlign: "center" }}>Lvl</th>
+                        <th style={{ textAlign: "right" }}>Attempts</th>
+                        <th style={{ textAlign: "right" }}>Unique learners</th>
+                        <th style={{ textAlign: "left" }}>Last attempt</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {slice.map((c) => (
+                        <tr key={c.id}>
+                          <td><Link href={`/case/${c.id}`}>{c.title || `Case #${c.id}`}</Link></td>
+                          <td>{c.specialty || "—"}</td>
+                          <td style={{ textAlign: "center" }}>{c.level ?? "—"}</td>
+                          <td style={{ textAlign: "right", fontWeight: 700 }}>{c.attempts}</td>
+                          <td style={{ textAlign: "right" }}>{c.unique_students}</td>
+                          <td className="muted small" title={c.last_attempt ? new Date(c.last_attempt).toLocaleString() : ""}>{relativeTime(c.last_attempt) || "—"}</td>
+                          <td>
+                            <div className="row row-actions" style={{ justifyContent: "flex-end" }}>
+                              <Link href={`/case/${c.id}`} className="btn btn-ghost btn-sm">View</Link>
+                              <Link href={`/discussion/${c.id}`} className="btn btn-ghost btn-sm">Discuss</Link>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <Pagination
+                  page={page}
+                  totalPages={totalPages}
+                  total={total}
+                  pageSize={pageSize}
+                  onChange={caseAttemptsPg.setPage}
+                  onPageSizeChange={caseAttemptsPg.setPageSize}
+                />
+              </>
+            );
+          })()}
         </div>
 
         {/* Practice activity — by learner */}
@@ -570,37 +640,63 @@ export default function AdminDashboard() {
           <h3 style={{ margin: 0 }}>Practice activity — by learner</h3>
           <p className="muted small" style={{ marginTop: 4 }}>Who is practicing the most. Includes both students and doctors.</p>
           <div className="spacer-7" />
-          {studentAttempts.length === 0 ? (
-            <p className="muted small">No attempts yet.</p>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table className="table" style={{ width: "100%", fontSize: 13 }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: "left" }}>User</th>
-                    <th style={{ textAlign: "left" }}>Role</th>
-                    <th style={{ textAlign: "right" }}>Total attempts</th>
-                    <th style={{ textAlign: "right" }}>Unique cases</th>
-                    <th style={{ textAlign: "left" }}>Last attempt</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {studentAttempts.slice(0, 50).map((u) => (
-                    <tr key={u.id}>
-                      <td><Link href={`/u/${u.username}`}>{u.full_name || u.username}</Link></td>
-                      <td>{u.role}</td>
-                      <td style={{ textAlign: "right", fontWeight: 700 }}>{u.attempts}</td>
-                      <td style={{ textAlign: "right" }}>{u.unique_cases}</td>
-                      <td style={{ color: "var(--muted, #888)" }}>{u.last_attempt ? new Date(u.last_attempt).toLocaleString() : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {studentAttempts.length > 50 && (
-                <p className="muted small" style={{ marginTop: 8 }}>Showing top 50 of {studentAttempts.length}.</p>
-              )}
-            </div>
-          )}
+          {activityLoading ? (
+            <SkeletonRows n={6} avatar />
+          ) : activityError ? (
+            <ErrorState body={activityError} onRetry={loadActivity} />
+          ) : studentAttempts.length === 0 ? (
+            <EmptyState icon="👥" title="No learners active" body="Once people start practicing, you'll see them here." />
+          ) : (() => {
+            const total = studentAttempts.length;
+            const pageSize = studentAttemptsPg.pageSize;
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+            const page = Math.min(studentAttemptsPg.page, totalPages);
+            const start = (page - 1) * pageSize;
+            const slice = studentAttempts.slice(start, start + pageSize);
+            return (
+              <>
+                <div style={{ overflowX: "auto" }}>
+                  <table className="table" style={{ width: "100%", fontSize: 13 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: "left" }}>User</th>
+                        <th style={{ textAlign: "left" }}>Role</th>
+                        <th style={{ textAlign: "right" }}>Total attempts</th>
+                        <th style={{ textAlign: "right" }}>Unique cases</th>
+                        <th style={{ textAlign: "left" }}>Last attempt</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {slice.map((u) => (
+                        <tr key={u.id}>
+                          <td><Link href={`/u/${u.username}`}>{u.full_name || u.username}</Link></td>
+                          <td>{u.role}</td>
+                          <td style={{ textAlign: "right", fontWeight: 700 }}>{u.attempts}</td>
+                          <td style={{ textAlign: "right" }}>{u.unique_cases}</td>
+                          <td className="muted small" title={u.last_attempt ? new Date(u.last_attempt).toLocaleString() : ""}>{relativeTime(u.last_attempt) || "—"}</td>
+                          <td>
+                            <div className="row row-actions" style={{ justifyContent: "flex-end" }}>
+                              <Link href={`/u/${u.username}`} className="btn btn-ghost btn-sm">Profile</Link>
+                              <Link href={`/messages/u/${u.username}`} className="btn btn-ghost btn-sm">DM</Link>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <Pagination
+                  page={page}
+                  totalPages={totalPages}
+                  total={total}
+                  pageSize={pageSize}
+                  onChange={studentAttemptsPg.setPage}
+                  onPageSizeChange={studentAttemptsPg.setPageSize}
+                />
+              </>
+            );
+          })()}
         </div>
 
         {/* AI generate (moved to bottom) */}
@@ -819,6 +915,8 @@ export default function AdminDashboard() {
           </div>
         )}
       </Modal>
+
+      {confirmEl}
     </AppShell>
   );
 }

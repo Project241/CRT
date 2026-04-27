@@ -119,3 +119,83 @@
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ===== Dark mode ===== */
+/* Auto when system prefers dark AND user hasn't opted out (data-theme attribute on <html>) */
+:root[data-theme="dark"] {
+  --cream:        #15191A;
+  --bg:           #15191A;
+  --bg-elev:      #1E2426;
+  --bg-muted:     #232A2C;
+  --text:         #ECECEA;
+  --text-soft:    #D6D6D2;
+  --text-muted:   #9AA09E;
+  --line:         rgba(236, 236, 234, 0.10);
+  --line-strong:  rgba(236, 236, 234, 0.20);
+  --line-emerald: rgba(167, 232, 201, 0.20);
+
+  --primary:      #4FB893;
+  --primary-hover:#6FCFA8;
+  --primary-soft: rgba(167, 232, 201, 0.16);
+  --primary-ink:  #A7E8C9;
+  --accent:       #A7E8C9;
+  --danger:       #F0867F;
+  --warning:      #E5B25C;
+  --success:      #5FCB94;
+
+  --paper:        #15191A;
+  --paper-2:      #1E2426;
+
+  --teal-50:  rgba(167, 232, 201, 0.08);
+  --teal-100: rgba(167, 232, 201, 0.16);
+  --teal-200: #A7E8C9;
+  --teal-600: #4FB893;
+  --teal-700: #6FCFA8;
+  --teal-800: #A7E8C9;
+
+  --ink-50:   #1A1F20;
+  --ink-100:  #232A2C;
+  --ink-200:  #2C3437;
+  --ink-300:  #3A4346;
+  --ink-400:  #6B7372;
+  --ink-500:  #9AA09E;
+  --ink-600:  #C2C5C2;
+  --ink-700:  #D6D6D2;
+  --ink-800:  #ECECEA;
+  --ink-900:  #FFFFFF;
+
+  --amber-100: rgba(244, 197, 112, 0.16);
+  --amber-300: #F4C570;
+  --amber-700: #F4C570;
+
+  --rose-100:  rgba(240, 134, 127, 0.16);
+  --rose-300:  #F0867F;
+  --rose-700:  #F0867F;
+
+  --green-100: rgba(95, 203, 148, 0.16);
+  --green-500: #5FCB94;
+  --green-700: #A7E8C9;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.40), 0 1px 1px rgba(0, 0, 0, 0.30);
+  --shadow-2: 0 6px 14px -6px rgba(0, 0, 0, 0.55), 0 2px 4px rgba(0, 0, 0, 0.35);
+  --shadow-3: 0 18px 40px -16px rgba(0, 0, 0, 0.65), 0 4px 10px rgba(0, 0, 0, 0.45);
+  --shadow-card: 0 20px 60px rgba(0, 0, 0, 0.60);
+  --shadow-glow: 0 10px 40px -10px rgba(167, 232, 201, 0.20);
+  --shadow-cta: 0 4px 14px rgba(0, 0, 0, 0.50);
+  --shadow-cta-hover: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="light"] { color-scheme: light; }
+
+/* Better default focus ring across the app */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}

@@ -281,11 +281,11 @@ export default function DrRioWidget(props = {}) {
             transition={{ duration: 0.22, ease: [0.2, 0.7, 0.2, 1] }}
             style={{
               position: "fixed",
-              right: 22,
-              bottom: 22,
+              right: "max(22px, env(safe-area-inset-right))",
+              bottom: "max(22px, calc(env(safe-area-inset-bottom) + 76px))",
               zIndex: 1300,
               width: "min(380px, calc(100vw - 28px))",
-              height: "min(560px, calc(100vh - 100px))",
+              height: "min(560px, calc(100vh - 160px))",
               background: "var(--bg-elev, #fff)",
               borderRadius: 18,
               boxShadow: "0 24px 60px rgba(15,76,58,0.28), 0 0 0 1px rgba(0,0,0,0.06)",

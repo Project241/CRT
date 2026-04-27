@@ -103,9 +103,58 @@ export default function CaseUpload() {
   useEffect(() => {
     api.get("/api/cases/specialties").then((r) => {
       setSpecialties(r.specialties);
-      setSpecialty(r.specialties[0] || "");
+      // Only pick a default if no draft restored a specialty.
+      setSpecialty((curr) => curr || r.specialties[0] || "");
     });
   }, []);
+
+  // ---- Draft autosave (single-case) ----
+  const DRAFT_KEY = "reasonal:caseupload:draft:v1";
+  const [draftRestored, setDraftRestored] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (d.title) setTitle(d.title);
+      if (d.specialty) setSpecialty(d.specialty);
+      if (d.customSpecialty) setCustomSpecialty(d.customSpecialty);
+      if (d.level) setLevel(d.level);
+      if (d.body) setBody(d.body);
+      if (d.questionPrompt) setQuestionPrompt(d.questionPrompt);
+      if (d.source) setSource(d.source);
+      if (d.diagnosis) setDiagnosis(d.diagnosis);
+      if (d.acceptedDiagnoses) setAcceptedDiagnoses(d.acceptedDiagnoses);
+      if (d.diagnosisExplanation) setDiagnosisExplanation(d.diagnosisExplanation);
+      if (d.title || d.body || d.diagnosis) setDraftRestored(true);
+    } catch {/* ignore */}
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        const hasContent = title || body || diagnosis || questionPrompt;
+        if (!hasContent) return;
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({
+          title, specialty, customSpecialty, level, body,
+          questionPrompt, source, diagnosis, acceptedDiagnoses, diagnosisExplanation,
+          savedAt: Date.now(),
+        }));
+      } catch {/* quota */}
+    }, 600);
+    return () => clearTimeout(t);
+  }, [title, specialty, customSpecialty, level, body, questionPrompt, source, diagnosis, acceptedDiagnoses, diagnosisExplanation]);
+
+  function clearDraft() {
+    try { localStorage.removeItem(DRAFT_KEY); } catch {/* ignore */}
+    setDraftRestored(false);
+  }
+  function discardDraft() {
+    clearDraft();
+    setTitle(""); setBody(""); setQuestionPrompt(""); setDiagnosis("");
+    setAcceptedDiagnoses(""); setDiagnosisExplanation(""); setCustomSpecialty("");
+  }
 
   function onPickFiles(e) {
     const picked = Array.from(e.target.files || []);
@@ -149,6 +198,7 @@ export default function CaseUpload() {
           toast.error(`Case saved, but attachments failed: ${err.message}`);
         }
       }
+      clearDraft();
       toast.success("Uploaded — auto-verified by you");
       navigate(`/case/${r.id}`);
     } catch (e) { toast.error(e.message); }
@@ -214,6 +264,12 @@ export default function CaseUpload() {
         </p>
         <div className="spacer-7" />
 
+        {mode === "single" && draftRestored && (
+          <div className="banner-info" role="status" style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span><strong>Draft restored.</strong> Your previous unsubmitted draft has been recovered.</span>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={discardDraft}>Discard draft</button>
+          </div>
+        )}
         {mode === "single" && (
           <form onSubmit={submit} className="card">
             <div className="field">

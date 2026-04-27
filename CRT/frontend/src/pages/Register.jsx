@@ -4,6 +4,7 @@ import AppShell from "../components/AppShell.jsx";
 import { api } from "../lib/api.js";
 import { useToast } from "../components/Toast.jsx";
 import { useAuth } from "../lib/auth.jsx";
+import { COUNTRIES, YEAR_OF_STUDY_OPTIONS } from "../lib/countries.js";
 
 const SPECIALTIES = [
   "General Medicine", "Cardiology", "Neurology", "Pediatrics", "Surgery",
@@ -211,19 +212,27 @@ export default function Register() {
                   )}
                 </div>
                 <div className="field">
-                  <label className="label">Country</label>
-                  <input className="input" value={country} onChange={(e) => setCountry(e.target.value)} placeholder="e.g. India" />
+                  <label className="label" htmlFor="reg-country">Country</label>
+                  <select
+                    id="reg-country"
+                    className="select"
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                  >
+                    <option value="">— Select country —</option>
+                    {COUNTRIES.map((c) => (
+                      <option key={c.code} value={c.name}>{c.name}</option>
+                    ))}
+                  </select>
                 </div>
 
                 {role === "student" && (
                   <div className="field">
-                    <label className="label">Year of study</label>
-                    <select className="select" value={yearOfStudy} onChange={(e) => setYearOfStudy(e.target.value)}>
-                      <option>1st year</option>
-                      <option>2nd year</option>
-                      <option>3rd year</option>
-                      <option>Final year</option>
-                      <option>Internship</option>
+                    <label className="label" htmlFor="reg-yos">Year of study</label>
+                    <select id="reg-yos" className="select" value={yearOfStudy} onChange={(e) => setYearOfStudy(e.target.value)}>
+                      {YEAR_OF_STUDY_OPTIONS.map((y) => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
                     </select>
                   </div>
                 )}

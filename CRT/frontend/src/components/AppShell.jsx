@@ -8,9 +8,15 @@ import CommandPalette from "./CommandPalette.jsx";
 import { useToast } from "./Toast.jsx";
 import { isPushSupported, getPermission, subscribeToPush } from "../lib/push.js";
 
+function isActive(location, href) {
+  if (!href) return false;
+  if (href === "/") return location === "/";
+  return location === href || location.startsWith(href + "/") || location.startsWith(href + "?");
+}
+
 export default function AppShell({ children }) {
   const { user, logout } = useAuth();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -160,20 +166,20 @@ export default function AppShell({ children }) {
             <span /><span /><span />
           </button>
           <nav className={`nav-links ${open ? "open" : ""}`} onClick={() => setOpen(false)}>
-            {isStudent && <Link href="/practice" className="nav-link">Practice</Link>}
-            {isStudent && <Link href="/progress" className="nav-link">Progress</Link>}
-            {isDoc && <Link href="/verify" className="nav-link">Verify</Link>}
-            {isDoc && <Link href="/upload" className="nav-link">Upload</Link>}
-            {isDoc && <Link href="/lounge" className="nav-link">Lounge</Link>}
-            {isDoc && <Link href="/delete-requests" className="nav-link">Delete reqs</Link>}
-            {isAdmin && <Link href="/admin" className="nav-link">Admin</Link>}
+            {isStudent && <Link href="/practice" className={`nav-link ${isActive(location, "/practice") ? "is-active" : ""}`}>Practice</Link>}
+            {isStudent && <Link href="/progress" className={`nav-link ${isActive(location, "/progress") ? "is-active" : ""}`}>Progress</Link>}
+            {isDoc && <Link href="/verify" className={`nav-link ${isActive(location, "/verify") ? "is-active" : ""}`}>Verify</Link>}
+            {isDoc && <Link href="/upload" className={`nav-link ${isActive(location, "/upload") ? "is-active" : ""}`}>Upload</Link>}
+            {isDoc && <Link href="/lounge" className={`nav-link ${isActive(location, "/lounge") ? "is-active" : ""}`}>Lounge</Link>}
+            {isDoc && <Link href="/delete-requests" className={`nav-link ${isActive(location, "/delete-requests") ? "is-active" : ""}`}>Delete reqs</Link>}
+            {isAdmin && <Link href="/admin" className={`nav-link ${isActive(location, "/admin") ? "is-active" : ""}`}>Admin</Link>}
             {user ? (
               <div className="nav-user">
-                <Link href={`/u/${user.username}`} className="nav-link nav-username">
+                <Link href={`/u/${user.username}`} className={`nav-link nav-username ${isActive(location, `/u/${user.username}`) ? "is-active" : ""}`}>
                   <Avatar url={user.avatar_url} name={user.full_name || user.username} size={26} />
                   <span style={{ marginLeft: 8 }}>@{user.username}</span>
                 </Link>
-                <Link href="/settings" className="nav-link">Settings</Link>
+                <Link href="/settings" className={`nav-link ${isActive(location, "/settings") ? "is-active" : ""}`}>Settings</Link>
                 <button className="btn btn-ghost btn-sm" onClick={logout}>Sign out</button>
               </div>
             ) : (
@@ -188,6 +194,7 @@ export default function AppShell({ children }) {
       <main className="app-main">{children}</main>
       <KbdShortcuts />
       <CommandPalette />
+      {user && <MobileTabBar location={location} role={user.role} username={user.username} dmUnread={dmUnread} unread={unread} />}
       <footer className="footer">
         <div className="container footer-inner">
           <div>
@@ -197,5 +204,43 @@ export default function AppShell({ children }) {
         </div>
       </footer>
     </div>
+  );
+}
+
+function MobileTabBar({ location, role, username, dmUnread, unread }) {
+  const isStudent = role === "student";
+  const isDoc = role === "doctor" || role === "admin";
+  // Show 5 most-relevant destinations.
+  const tabs = [
+    isStudent ? { href: "/practice", label: "Practice", icon: "🩺" } : { href: "/verify", label: "Verify", icon: "✓" },
+    isStudent ? { href: "/progress", label: "Progress", icon: "📈" } : { href: "/upload", label: "Upload", icon: "＋" },
+    { href: "/messages", label: "Messages", icon: "💬", badge: dmUnread },
+    { href: "/notifications", label: "Alerts", icon: "🔔", badge: unread },
+    isDoc ? { href: "/lounge", label: "Lounge", icon: "👥" } : { href: `/u/${username}`, label: "Profile", icon: "👤" },
+  ];
+  return (
+    <nav className="mobile-tabbar" aria-label="Primary">
+      <ul className="mobile-tabbar-list">
+        {tabs.map((t) => (
+          <li key={t.href}>
+            <Link href={t.href} className={`mobile-tab ${isActive(location, t.href) ? "is-active" : ""}`} aria-label={t.label}>
+              <span className="mt-icon" aria-hidden>{t.icon}</span>
+              <span style={{ position: "relative" }}>
+                {t.label}
+                {t.badge > 0 && (
+                  <span style={{
+                    position: "absolute", top: -8, right: -16,
+                    background: "var(--danger)", color: "#fff",
+                    fontSize: 9, fontWeight: 700, lineHeight: "14px",
+                    minWidth: 14, height: 14, padding: "0 4px",
+                    borderRadius: 10, textAlign: "center",
+                  }}>{t.badge > 9 ? "9+" : t.badge}</span>
+                )}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
   );
 }

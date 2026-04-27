@@ -1,9 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import AppShell from "../components/AppShell.jsx";
 import Avatar from "../components/Avatar.jsx";
+import Pagination from "../components/Pagination.jsx";
+import EmptyState from "../components/EmptyState.jsx";
+import ErrorState from "../components/ErrorState.jsx";
+import Skeleton, { SkeletonStack } from "../components/Skeleton.jsx";
+import useUrlPaging from "../lib/usePaging.js";
+import { shortDate } from "../lib/date.js";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
+
+function paginate(arr, page, pageSize) {
+  const total = arr?.length || 0;
+  const start = (page - 1) * pageSize;
+  return { items: (arr || []).slice(start, start + pageSize), total };
+}
 
 export default function Profile() {
   const params = useParams();
@@ -12,12 +24,33 @@ export default function Profile() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    api.get(`/api/profiles/${params.username}`).then(setData).catch((e) => setError(e.message));
-  }, [params.username]);
+  const uploadedPaging = useUrlPaging({ enabled: false, defaultPageSize: 10 });
+  const verificationsPaging = useUrlPaging({ enabled: false, defaultPageSize: 10 });
 
-  if (error) return <AppShell><div className="container"><div className="empty">{error}</div></div></AppShell>;
-  if (!data) return <AppShell><div className="page-center"><div className="spinner-lg" /></div></AppShell>;
+  function load() {
+    setError(null); setData(null);
+    api.get(`/api/profiles/${params.username}`).then(setData).catch((e) => setError(e.message));
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [params.username]);
+
+  const uploaded = useMemo(
+    () => paginate(data?.uploaded, uploadedPaging.page, uploadedPaging.pageSize),
+    [data, uploadedPaging.page, uploadedPaging.pageSize],
+  );
+  const verifications = useMemo(
+    () => paginate(data?.verifications, verificationsPaging.page, verificationsPaging.pageSize),
+    [data, verificationsPaging.page, verificationsPaging.pageSize],
+  );
+
+  if (error) return <AppShell><div className="container"><ErrorState message={error} onRetry={load} /></div></AppShell>;
+  if (!data) return (
+    <AppShell>
+      <div className="container">
+        <SkeletonStack count={4} />
+      </div>
+    </AppShell>
+  );
 
   const u = data.user;
   const isMe = me && me.username === u.username;
@@ -61,32 +94,56 @@ export default function Profile() {
         {u.role === "doctor" && (
           <div className="dash-grid">
             <div className="card">
-              <h3>Uploaded cases ({data.uploaded?.length || 0})</h3>
+              <h3>Uploaded cases ({uploaded.total})</h3>
               <div className="spacer-7" />
-              {(!data.uploaded || data.uploaded.length === 0) ? <div className="empty">No uploads yet.</div> : (
-                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                  {data.uploaded.map((c) => (
-                    <li key={c.id} style={{ padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
-                      <Link href={`/case/${c.id}`}>{c.title}</Link>
-                      <div className="muted small">{c.specialty} · {new Date(c.created_at).toLocaleDateString()}</div>
-                    </li>
-                  ))}
-                </ul>
+              {uploaded.total === 0 ? (
+                <EmptyState title="No uploads yet" body="Cases this doctor uploads will appear here." />
+              ) : (
+                <>
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                    {uploaded.items.map((c) => (
+                      <li key={c.id} style={{ padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+                        <Link href={`/case/${c.id}`} className="clamp-1">{c.title}</Link>
+                        <div className="muted small">{c.specialty} · {shortDate(c.created_at)}</div>
+                      </li>
+                    ))}
+                  </ul>
+                  <Pagination
+                    page={uploadedPaging.page}
+                    pageSize={uploadedPaging.pageSize}
+                    total={uploaded.total}
+                    onPageChange={uploadedPaging.setPage}
+                    onPageSizeChange={uploadedPaging.setPageSize}
+                    pageSizeOptions={[10, 25, 50]}
+                  />
+                </>
               )}
             </div>
             <div className="card">
-              <h3>Verifications ({data.verifications?.length || 0})</h3>
+              <h3>Verifications ({verifications.total})</h3>
               <div className="spacer-7" />
-              {(!data.verifications || data.verifications.length === 0) ? <div className="empty">No verifications yet.</div> : (
-                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                  {data.verifications.slice(0, 20).map((v, i) => (
-                    <li key={i} style={{ padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
-                      <span className={`badge ${v.action === "verify" ? "badge-success" : "badge-danger"}`}>{v.action}</span>
-                      <Link href={`/case/${v.case_id}`} style={{ marginLeft: 10 }}>{v.title}</Link>
-                      <div className="muted small">{v.specialty} · {new Date(v.created_at).toLocaleDateString()}</div>
-                    </li>
-                  ))}
-                </ul>
+              {verifications.total === 0 ? (
+                <EmptyState title="No verifications yet" body="Verify or un-verify actions will appear here." />
+              ) : (
+                <>
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                    {verifications.items.map((v, i) => (
+                      <li key={i} style={{ padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+                        <span className={`badge ${v.action === "verify" ? "badge-success" : "badge-danger"}`}>{v.action}</span>
+                        <Link href={`/case/${v.case_id}`} style={{ marginLeft: 10 }} className="clamp-1">{v.title}</Link>
+                        <div className="muted small">{v.specialty} · {shortDate(v.created_at)}</div>
+                      </li>
+                    ))}
+                  </ul>
+                  <Pagination
+                    page={verificationsPaging.page}
+                    pageSize={verificationsPaging.pageSize}
+                    total={verifications.total}
+                    onPageChange={verificationsPaging.setPage}
+                    onPageSizeChange={verificationsPaging.setPageSize}
+                    pageSizeOptions={[10, 25, 50]}
+                  />
+                </>
               )}
             </div>
           </div>

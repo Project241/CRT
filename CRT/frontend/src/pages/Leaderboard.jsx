@@ -5,6 +5,7 @@ import AppShell from "../components/AppShell.jsx";
 import Avatar from "../components/Avatar.jsx";
 import Counter from "../components/Counter.jsx";
 import EmptyState from "../components/EmptyState.jsx";
+import Pagination from "../components/Pagination.jsx";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
 
@@ -539,25 +540,12 @@ export default function Leaderboard() {
             </div>
 
             {/* Pagination */}
-            {data.totalPages > 1 && (
-              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 16, padding: "20px 0" }}>
-                <button
-                  className="btn btn-ghost"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  ← Previous
-                </button>
-                <span className="muted small">Page {page} of {data.totalPages}</span>
-                <button
-                  className="btn btn-ghost"
-                  disabled={page >= data.totalPages}
-                  onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
-                >
-                  Next →
-                </button>
-              </div>
-            )}
+            <Pagination
+              page={page}
+              pageSize={25}
+              total={(data.totalPages || 1) * 25}
+              onPageChange={setPage}
+            />
           </>
         )}
       </motion.div>

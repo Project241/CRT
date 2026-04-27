@@ -345,6 +345,19 @@ export default function CasePlay() {
             </div>
           </div>
           <div className="row play-actions">
+            <button
+              className="btn btn-ghost btn-sm copy-link-btn"
+              onClick={async () => {
+                try {
+                  const url = `${window.location.origin}/case/${c.id}`;
+                  await navigator.clipboard.writeText(url);
+                  toast.success("Link copied");
+                } catch { toast.error("Could not copy link"); }
+              }}
+              title="Copy link to this case"
+            >
+              🔗 Copy link
+            </button>
             <button className="btn btn-ghost btn-sm" onClick={() => setReadingMode(true)} title="Reading mode (R)">📖 Reading mode</button>
             <button className="btn btn-ghost btn-sm" onClick={thumbs}>👍 {data.thumbs.count}</button>
             {isDoc && (

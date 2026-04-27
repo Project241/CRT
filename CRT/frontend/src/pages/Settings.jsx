@@ -2,9 +2,11 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import AppShell from "../components/AppShell.jsx";
 import Avatar from "../components/Avatar.jsx";
 import Toggle from "../components/Toggle.jsx";
+import { useConfirm } from "../components/ConfirmDialog.jsx";
 import { api } from "../lib/api.js";
-import { useAuth } from "../lib/auth.jsx";
+import { useAuth, useTheme } from "../lib/auth.jsx";
 import { useToast } from "../components/Toast.jsx";
+import { COUNTRIES, YEAR_OF_STUDY_OPTIONS } from "../lib/countries.js";
 import {
   isPushSupported,
   getPermission,
@@ -35,11 +37,15 @@ function shortDevice(ua) {
 
 export default function Settings() {
   const { user, refresh } = useAuth();
+  const { theme, setTheme } = useTheme();
   const toast = useToast();
+  const [confirmEl, askConfirm] = useConfirm();
   const [showScores, setShowScores] = useState(false);
   const [country, setCountry] = useState("");
+  const [yearOfStudy, setYearOfStudy] = useState("");
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const fileRef = useRef(null);
 
   const supported = isPushSupported();
@@ -56,6 +62,7 @@ export default function Settings() {
     if (user) {
       setShowScores(!!user.show_scores);
       setCountry(user.country || "");
+      setYearOfStudy(user.year_of_study || "");
       setAvatarUrl(user.avatar_url || null);
     }
   }, [user]);
@@ -99,11 +106,17 @@ export default function Settings() {
   }, [supported, refreshPushState]);
 
   async function save() {
+    setSavingProfile(true);
     try {
-      await api.patch("/api/profiles/me", { showScores, country });
+      await api.patch("/api/profiles/me", {
+        showScores,
+        country,
+        ...(user?.role === "student" ? { year_of_study: yearOfStudy } : {}),
+      });
       await refresh();
       toast.success("Saved");
     } catch (e) { toast.error(e.message); }
+    finally { setSavingProfile(false); }
   }
 
   async function pickAvatar(e) {
@@ -124,7 +137,13 @@ export default function Settings() {
 
   async function removeAvatar() {
     if (!avatarUrl) return;
-    if (!window.confirm("Remove profile picture?")) return;
+    const ok = await askConfirm({
+      title: "Remove profile picture?",
+      body: "Your initials will be shown instead. You can always upload a new picture later.",
+      confirmLabel: "Remove",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       await api.del("/api/profiles/me/avatar");
       setAvatarUrl(null);
@@ -234,9 +253,36 @@ export default function Settings() {
           </div>
 
           <div className="field">
-            <label className="label">Country</label>
-            <input className="input" value={country} onChange={(e) => setCountry(e.target.value)} />
+            <label className="label" htmlFor="settings-country">Country</label>
+            <select
+              id="settings-country"
+              className="select"
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+            >
+              <option value="">— Select country —</option>
+              {COUNTRIES.map((c) => (
+                <option key={c.code} value={c.name}>{c.name}</option>
+              ))}
+            </select>
           </div>
+
+          {user?.role === "student" && (
+            <div className="field">
+              <label className="label" htmlFor="settings-yos">Year of study</label>
+              <select
+                id="settings-yos"
+                className="select"
+                value={yearOfStudy}
+                onChange={(e) => setYearOfStudy(e.target.value)}
+              >
+                <option value="">— Select year —</option>
+                {YEAR_OF_STUDY_OPTIONS.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {user?.role === "student" && (
             <div className="field">
@@ -248,7 +294,34 @@ export default function Settings() {
             </div>
           )}
 
-          <button className="btn btn-primary" onClick={save}>Save changes</button>
+          <button className="btn btn-primary" onClick={save} disabled={savingProfile}>
+            {savingProfile ? <><span className="spinner" /> Saving…</> : "Save changes"}
+          </button>
+        </div>
+
+        <div className="spacer-6" />
+
+        <div className="card">
+          <h3 style={{ marginTop: 0 }}>Appearance</h3>
+          <p className="muted small" style={{ marginTop: 4 }}>Choose a theme. "System" follows your device setting.</p>
+          <div className="theme-toggle-row" role="radiogroup" aria-label="Theme">
+            {[
+              { v: "light", label: "☀ Light" },
+              { v: "dark", label: "🌙 Dark" },
+              { v: "system", label: "🖥 System" },
+            ].map((opt) => (
+              <button
+                key={opt.v}
+                type="button"
+                role="radio"
+                aria-checked={theme === opt.v}
+                className={`seg-btn ${theme === opt.v ? "is-active" : ""}`}
+                onClick={() => setTheme(opt.v)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="spacer-6" />
@@ -361,6 +434,7 @@ export default function Settings() {
           )}
         </div>
       </div>
+      {confirmEl}
     </AppShell>
   );
 }
